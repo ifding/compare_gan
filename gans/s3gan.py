@@ -206,10 +206,10 @@ class S3GAN(modular_gan.ModularGAN):
                      x_rep.shape, rotation_logits)
 
     #if not self._project_y:
-    #  return d_probs, d_logits, rotation_logits, None, is_label_available
+    return d_probs, d_logits, rotation_logits, None, is_label_available
 
     # Predict the class of the image.
-    aux_logits = None
+    #aux_logits = None
     #if self._use_predictor:
     #  with tf.variable_scope("discriminator_predictor", reuse=tf.AUTO_REUSE):
     #    aux_logits = ops.linear(x_rep, y.shape[1], use_bias=True,
@@ -225,12 +225,12 @@ class S3GAN(modular_gan.ModularGAN):
     #    logging.info("[Discriminator] %s -> aux_logits=%s, y_predicted=%s",
     #                 aux_logits.shape, aux_logits.shape, y_predicted.shape)
 
-    class_embedding = self.get_class_embedding(
-        y=y, embedding_dim=x_rep.shape[-1].value, use_sn=use_sn)
-    d_logits += tf.reduce_sum(class_embedding * x_rep, axis=1, keepdims=True)
-    
-    d_probs = tf.nn.sigmoid(d_logits)
-    return d_probs, d_logits, rotation_logits, aux_logits, is_label_available
+    #class_embedding = self.get_class_embedding(
+    #    y=y, embedding_dim=x_rep.shape[-1].value, use_sn=use_sn)
+    #d_logits += tf.reduce_sum(class_embedding * x_rep, axis=1, keepdims=True)
+    #
+    #d_probs = tf.nn.sigmoid(d_logits)
+    #return d_probs, d_logits, rotation_logits, aux_logits, is_label_available
 
   def get_class_embedding(self, y, embedding_dim, use_sn):
     with tf.variable_scope("discriminator_projection", reuse=tf.AUTO_REUSE):
