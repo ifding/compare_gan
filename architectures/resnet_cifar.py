@@ -172,13 +172,14 @@ class Discriminator(resnet_ops.ResNetDiscriminator):
 class Encoder(abstract_arch.AbstractEncoder):
   """ResNet encoder"""
 
-  def __init__(self, project_y=False, **kwargs):
+  def __init__(self, num_classes, project_y=False, **kwargs):
     super(Encoder, self).__init__(**kwargs)
     self._project_y = project_y
+    self.num_classes = num_classes
     self.module = hub.Module("/home/feid/simclr/simclr_test_ft/hub/9766") # file path
     #print(self.module.get_input_info_dict())
     #print(self.module.get_output_info_dict())
- 
+
   def apply(self, x, y, is_training):
     """Apply the encoder on a input.
 
@@ -195,12 +196,11 @@ class Encoder(abstract_arch.AbstractEncoder):
       last layer.
     """
     z_dim = 128
-    num_classes = 10
     hiddens = self.module(x)
    
     latent_codes = ops.linear(
         hiddens,
-        z_dim + num_classes,
+        z_dim + self.num_classes,
         scope="enc_final_fc",
         use_sn=self._spectral_norm)
 
