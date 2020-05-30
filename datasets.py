@@ -371,6 +371,19 @@ class Cifar10Dataset(ImageDatasetV2):
         seed=seed)
 
 
+class Cifar100Dataset(ImageDatasetV2):
+  """Wrapper for the CIFAR100 dataset from TDFS."""
+
+  def __init__(self, seed):
+    super(Cifar100Dataset, self).__init__(
+        name="cifar100",
+        tfds_name="cifar100",
+        resolution=32,
+        colors=3,
+        num_classes=20,
+        eval_test_samples=10000,
+        seed=seed)
+
 
 class STL10Dataset(ImageDatasetV2):
   """Wrapper for the STL10 dataset from TDFS."""
@@ -395,9 +408,6 @@ class STL10Dataset(ImageDatasetV2):
     if FLAGS.data_fake_dataset:
       return self._make_fake_dataset(split)
    
-    print(self._tfds_name)
-    exit()
-
     ds = tfds.load(
         self._tfds_name,
         split=split,
@@ -659,6 +669,7 @@ class SoftLabeledImagenetDataset(ImagenetDataset):
 DATASETS = {
     "celeb_a": CelebaDataset,
     "cifar10": Cifar10Dataset,
+    "cifar100": Cifar100Dataset,
     "stl10": STL10Dataset,
     "fashion-mnist": FashionMnistDataset,
     "lsun-bedroom": LsunBedroomDataset,
