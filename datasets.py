@@ -41,6 +41,8 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
+from compare_gan.stl10 import Stl10
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
@@ -392,11 +394,16 @@ class STL10Dataset(ImageDatasetV2):
     super(STL10Dataset, self).__init__(
         name="stl10",
         tfds_name="stl10",
-        resolution=96,
+        resolution=48,
         colors=3,
         num_classes=10,
-        eval_test_samples=10000,
+        eval_test_samples=8000,
         seed=seed)
+
+  def _parse_fn(self, features):
+    image = tf.image.resize(features['image'], (48, 48))
+    image = tf.cast(image, tf.float32) / 255.0
+    return image, features["label"]
 
   def _load_dataset(self, split):
     """Loads the underlying dataset split from disk.
@@ -407,17 +414,13 @@ class STL10Dataset(ImageDatasetV2):
     """
     if FLAGS.data_fake_dataset:
       return self._make_fake_dataset(split)
-   
-    ds = tfds.load(
-        self._tfds_name,
-        split=split,
-        data_dir=FLAGS.tfds_data_dir,
-        as_dataset_kwargs={"shuffle_files": False})
+
+    builder = Stl10()
+    builder.download_and_prepare()
+    ds = builder.as_dataset(split=split, as_supervised=False)
     ds = self._replace_labels(split, ds)
     ds = ds.map(self._parse_fn)
     return ds.prefetch(tf.contrib.data.AUTOTUNE)
-
-
 
 
 class CelebaDataset(ImageDatasetV2):

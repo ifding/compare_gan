@@ -24,11 +24,12 @@ from __future__ import division
 from __future__ import print_function
 
 from compare_gan.architectures import arch_ops as ops
-from compare_gan.architectures import resnet_ops
+from compare_gan.architectures import resnet_ops, abstract_arch
 
+import gin
 from six.moves import range
 import tensorflow as tf
-
+import tensorflow_hub as hub
 
 class Generator(resnet_ops.ResNetGenerator):
   """ResNet generator, 3 blocks, supporting 48x48 resolution."""
@@ -43,14 +44,14 @@ class Generator(resnet_ops.ResNetGenerator):
       is_training: boolean, are we in train or eval model.
 
     Returns:
-      A tensor of size [batch_size, 32, 32, colors] with values in [0, 1].
+      A tensor of size [batch_size, 48, 48, colors] with values in [0, 1].
     """
     ch = 64
     colors = self._image_shape[2]
     batch_size = z.get_shape().as_list()[0]
     magic = [(8, 4), (4, 2), (2, 1)]
     output = ops.linear(z, 6 * 6 * 512, scope="fc_noise")
-    output = tf.reshape(output, [batch_size, 6, 6, 512], name="fc_reshaped")
+    output = tf.reshape(output, [-1, 6, 6, 512], name="fc_reshaped")
     for block_idx in range(3):
       block = self._resnet_block(
           name="B{}".format(block_idx + 1),
@@ -73,7 +74,7 @@ class Discriminator(resnet_ops.ResNetDiscriminator):
     """Apply the discriminator on a input.
 
     Args:
-      x: `Tensor` of shape [batch_size, 32, 32, ?] with real or fake images.
+      x: `Tensor` of shape [batch_size, 48, 48, ?] with real or fake images.
       y: `Tensor` of shape [batch_size, num_classes] with one hot encoded
         labels.
       is_training: Boolean, whether the architecture should be constructed for
@@ -106,3 +107,42 @@ class Discriminator(resnet_ops.ResNetDiscriminator):
                            use_sn=self._spectral_norm)
     out = tf.nn.sigmoid(out_logit)
     return out, out_logit, pre_logits
+
+
+@gin.configurable
+class Encoder(abstract_arch.AbstractEncoder):
+  """ResNet encoder"""
+
+  def __init__(self, project_y=False, **kwargs):
+    super(Encoder, self).__init__(**kwargs)
+    self._project_y = project_y
+    self.module = hub.Module("/home/feid/simclr/simclr_stl10_ft/hub/20508") # file path
+
+  def apply(self, x, y, is_training):
+    """Apply the encoder on a input.
+
+    Args:
+      x: `Tensor` of shape [batch_size, 48, 48, ?] with real or fake images.
+      y: `Tensor` of shape [batch_size, num_classes] with one hot encoded
+        labels.
+      is_training: Boolean, whether the architecture should be constructed for
+        training or inference.
+
+    Returns:
+      Tuple of 3 Tensors, the final prediction of the discriminator, the logits
+      before the final output activation function and logits form the second
+      last layer.
+    """
+    z_dim = 128
+    num_classes = 10
+    hiddens = self.module(x)
+
+    latent_codes = ops.linear(
+        hiddens,
+        z_dim + num_classes,
+        scope="enc_final_fc",
+        use_sn=self._spectral_norm)
+
+    logits = latent_codes[:, z_dim:]
+    labels = tf.nn.softmax(logits)
+    return latent_codes[:, 0:z_dim], labels, logits
