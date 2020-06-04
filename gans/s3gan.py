@@ -125,12 +125,14 @@ class S3GAN(modular_gan.ModularGAN):
         shape=[batch_size] + list(self._dataset.image_shape),
         dtype=tf.float32,
         name="images_for_encode")
-    #if self.conditional:
-    #  inputs["labels"] = placeholder_fn(
-    #      shape=(batch_size,),
-    #      dtype=tf.int32,
-    #      name="labels_for_eval")
-    #  y = self._get_one_hot_labels(inputs["labels"])
+    if self.conditional:
+      inputs["labels"] = placeholder_fn(
+          shape=(batch_size,),
+          dtype=tf.int32,
+          name="labels_for_eval")
+      #y = self._get_one_hot_labels(inputs["labels"])
+      y = self._get_one_hot_labels(tf.zeros_like(inputs["labels"],dtype=tf.int32))
+      
 
     logging.info("Creating module for model %s with inputs %s and y=%s",
                  model, inputs, y)
@@ -189,8 +191,9 @@ class S3GAN(modular_gan.ModularGAN):
         x, y=y, is_training=is_training)
     use_sn = self.discriminator._spectral_norm  # pylint: disable=protected-access
 
-    is_label_available = tf.cast(tf.cast(
-        tf.reduce_sum(y, axis=1, keepdims=True), tf.float32) > 0.5, tf.float32)
+    #is_label_available = tf.cast(tf.cast(
+    #    tf.reduce_sum(y, axis=1, keepdims=True), tf.float32) > 0.5, tf.float32)
+    is_label_available = tf.constant(False)
     assert x_rep.shape.ndims == 2, x_rep.shape
 
     # Predict the rotation of the image.
@@ -205,32 +208,32 @@ class S3GAN(modular_gan.ModularGAN):
         logging.info("[Discriminator] rotation head %s -> %s",
                      x_rep.shape, rotation_logits)
 
-    #if not self._project_y:
-    return d_probs, d_logits, rotation_logits, None, is_label_available
+    if not self._project_y:
+      return d_probs, d_logits, rotation_logits, None, is_label_available
 
     # Predict the class of the image.
-    #aux_logits = None
-    #if self._use_predictor:
-    #  with tf.variable_scope("discriminator_predictor", reuse=tf.AUTO_REUSE):
-    #    aux_logits = ops.linear(x_rep, y.shape[1], use_bias=True,
-    #                            scope="predictor_linear", use_sn=use_sn)
-    #    # Apply the projection discriminator if needed.
-    #    if self._use_soft_pred:
-    #      y_predicted = tf.nn.softmax(aux_logits)
-    #    else:
-    #      y_predicted = tf.one_hot(
-    #          tf.arg_max(aux_logits, 1), aux_logits.shape[1])
-    #    y = (1.0 - is_label_available) * y_predicted + is_label_available * y
-    #    y = tf.stop_gradient(y)
-    #    logging.info("[Discriminator] %s -> aux_logits=%s, y_predicted=%s",
-    #                 aux_logits.shape, aux_logits.shape, y_predicted.shape)
+    aux_logits = None
+    if self._use_predictor:
+      with tf.variable_scope("discriminator_predictor", reuse=tf.AUTO_REUSE):
+        aux_logits = ops.linear(x_rep, y.shape[1], use_bias=True,
+                                scope="predictor_linear", use_sn=use_sn)
+        # Apply the projection discriminator if needed.
+        if self._use_soft_pred:
+          y_predicted = tf.nn.softmax(aux_logits)
+        else:
+          y_predicted = tf.one_hot(
+              tf.arg_max(aux_logits, 1), aux_logits.shape[1])
+        y = (1.0 - is_label_available) * y_predicted + is_label_available * y
+        y = tf.stop_gradient(y)
+        logging.info("[Discriminator] %s -> aux_logits=%s, y_predicted=%s",
+                     aux_logits.shape, aux_logits.shape, y_predicted.shape)
 
-    #class_embedding = self.get_class_embedding(
-    #    y=y, embedding_dim=x_rep.shape[-1].value, use_sn=use_sn)
-    #d_logits += tf.reduce_sum(class_embedding * x_rep, axis=1, keepdims=True)
-    #
-    #d_probs = tf.nn.sigmoid(d_logits)
-    #return d_probs, d_logits, rotation_logits, aux_logits, is_label_available
+    class_embedding = self.get_class_embedding(
+        y=y, embedding_dim=x_rep.shape[-1].value, use_sn=use_sn)
+    d_logits += tf.reduce_sum(class_embedding * x_rep, axis=1, keepdims=True)
+    
+    d_probs = tf.nn.sigmoid(d_logits)
+    return d_probs, d_logits, rotation_logits, aux_logits, is_label_available
 
   def get_class_embedding(self, y, embedding_dim, use_sn):
     with tf.variable_scope("discriminator_projection", reuse=tf.AUTO_REUSE):
@@ -384,14 +387,16 @@ class S3GAN(modular_gan.ModularGAN):
     """
     real_images = features["images"]
     if self.conditional:
-      #if self._use_soft_labels:
-      #  assert labels.shape[1] == self._dataset.num_classes, \
-      #      ("Need soft labels of dimension {} but got dimension {}".format(
-      #          self._dataset.num_classes, labels.shape[1]))
-      #  real_labels = labels
-      #else:
-      #  real_labels = self._get_one_hot_labels(labels)
-      real_labels = self._get_one_hot_labels(tf.zeros_like(labels,dtype=tf.int32))
+      if self._use_soft_labels:
+        assert labels.shape[1] == self._dataset.num_classes, \
+            ("Need soft labels of dimension {} but got dimension {}".format(
+                self._dataset.num_classes, labels.shape[1]))
+        #real_labels = labels
+        real_labels = tf.zeros_like(labels,dtype=tf.int32)
+      else:
+        #real_labels = self._get_one_hot_labels(labels)
+        real_labels = self._get_one_hot_labels(tf.zeros_like(labels,dtype=tf.int32))
+ 
     fake_labels = self._get_one_hot_labels(features["sampled_labels"])
     if self._experimental_joint_gen_for_disc:
       assert "generated" in features
@@ -431,7 +436,7 @@ class S3GAN(modular_gan.ModularGAN):
 
     d_predictions, d_logits, rot_logits, aux_logits, is_label_available = (
         self.discriminator_with_additonal_heads(
-            x=all_features, y=all_labels, is_training=is_training))
+            x=all_features, y=None, is_training=is_training))
 
     z_enc_gen, z_enc_label, z_enc_logits = self.encoder(x=all_features, 
             y=None, is_training=is_training)
@@ -540,18 +545,18 @@ class S3GAN(modular_gan.ModularGAN):
       self._tpu_summary.scalar("accuracy/fake", accuracy_fake)
 
     # Training the predictor on the features of real data and real labels.
-    #if self._use_predictor:
-    #  real_aux_logits, _ = tf.split(aux_logits, 2)
-    #  real_aux_logits = real_aux_logits[:bs]
+    if self._use_predictor:
+      real_aux_logits, _ = tf.split(aux_logits, 2)
+      real_aux_logits = real_aux_logits[:bs]
 
-    #  is_label_available, _ = tf.split(is_label_available, 2)
-    #  is_label_available = tf.squeeze(is_label_available[:bs])
+      is_label_available, _ = tf.split(is_label_available, 2)
+      is_label_available = tf.squeeze(is_label_available[:bs])
 
-    #  class_loss_real = tf.losses.softmax_cross_entropy(
-    #      real_labels, real_aux_logits, weights=is_label_available)
+      class_loss_real = tf.losses.softmax_cross_entropy(
+          real_labels, real_aux_logits, weights=is_label_available)
 
-    #  # Add the loss to the discriminator
-    #  self.d_loss += self._weight_class_loss * class_loss_real
-    #  self._tpu_summary.scalar("loss/class_loss_real", class_loss_real)
-    #  self._tpu_summary.scalar("label_frac", tf.reduce_mean(is_label_available))
+      # Add the loss to the discriminator
+      self.d_loss += self._weight_class_loss * class_loss_real
+      self._tpu_summary.scalar("loss/class_loss_real", class_loss_real)
+      self._tpu_summary.scalar("label_frac", tf.reduce_mean(is_label_available))
 # coding=utf-8
