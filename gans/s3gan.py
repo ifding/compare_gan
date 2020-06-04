@@ -435,10 +435,10 @@ class S3GAN(modular_gan.ModularGAN):
 
     d_predictions, d_logits, rot_logits, aux_logits, is_label_available = (
         self.discriminator_with_additonal_heads(
-            x=all_features, y=None, is_training=is_training))
+            x=all_features, y=all_labels, is_training=is_training))
 
     z_enc_gen, z_enc_label, z_enc_logits = self.encoder(x=all_features, 
-            y=None, is_training=is_training)
+            y=all_labels, is_training=is_training)
     logging.info("[Encoder] encoding images: %s", all_features)
 
     expected_batch_size = 2 * bs
