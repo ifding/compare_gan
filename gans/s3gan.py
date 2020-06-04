@@ -191,9 +191,8 @@ class S3GAN(modular_gan.ModularGAN):
         x, y=y, is_training=is_training)
     use_sn = self.discriminator._spectral_norm  # pylint: disable=protected-access
 
-    #is_label_available = tf.cast(tf.cast(
-    #    tf.reduce_sum(y, axis=1, keepdims=True), tf.float32) > 0.5, tf.float32)
-    is_label_available = tf.constant(False)
+    is_label_available = tf.cast(tf.cast(
+        tf.reduce_sum(y, axis=1, keepdims=True), tf.float32) > 0.5, tf.float32)
     assert x_rep.shape.ndims == 2, x_rep.shape
 
     # Predict the rotation of the image.
