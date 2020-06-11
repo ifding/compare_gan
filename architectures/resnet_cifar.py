@@ -197,9 +197,17 @@ class Encoder(abstract_arch.AbstractEncoder):
     """
     z_dim = 128
     hiddens = self.module(x)
-   
-    latent_codes = ops.linear(
+    
+    hidden_codes = ops.linear(
         hiddens,
+        z_dim*2,
+        scope="enc_hidden_fc",
+        use_sn=self._spectral_norm)
+
+    hidden_codes = tf.nn.relu(hidden_codes)
+  
+    latent_codes = ops.linear(
+        hidden_codes,
         z_dim + self.num_classes,
         scope="enc_final_fc",
         use_sn=self._spectral_norm)
