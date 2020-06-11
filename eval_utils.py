@@ -215,7 +215,7 @@ def cluster_test_dataset(sess, input_holder, encoded, dataset, num_examples):
   logging.info(" #Points = {}, K = {}, Purity = {},  NMI = {}, ARI = {}."
         .format(test_images.shape[0], dataset.num_classes, purity, nmi, ari))
   
-  return purity, ari, nmi
+  return purity, nmi, ari
   
 def compute_purity(y_pred, y_true):
   """
