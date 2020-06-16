@@ -191,8 +191,6 @@ class S3GAN(modular_gan.ModularGAN):
         x, y=y, is_training=is_training)
     use_sn = self.discriminator._spectral_norm  # pylint: disable=protected-access
 
-    is_label_available = tf.cast(tf.cast(
-        tf.reduce_sum(y, axis=1, keepdims=True), tf.float32) > 0.5, tf.float32)
     assert x_rep.shape.ndims == 2, x_rep.shape
 
     # Predict the rotation of the image.
@@ -207,46 +205,8 @@ class S3GAN(modular_gan.ModularGAN):
         logging.info("[Discriminator] rotation head %s -> %s",
                      x_rep.shape, rotation_logits)
 
-    if not self._project_y:
-      return d_probs, d_logits, rotation_logits, None, is_label_available
+    return d_probs, d_logits, rotation_logits, None
 
-    # Predict the class of the image.
-    aux_logits = None
-    if self._use_predictor:
-      with tf.variable_scope("discriminator_predictor", reuse=tf.AUTO_REUSE):
-        aux_logits = ops.linear(x_rep, y.shape[1], use_bias=True,
-                                scope="predictor_linear", use_sn=use_sn)
-        # Apply the projection discriminator if needed.
-        if self._use_soft_pred:
-          y_predicted = tf.nn.softmax(aux_logits)
-        else:
-          y_predicted = tf.one_hot(
-              tf.arg_max(aux_logits, 1), aux_logits.shape[1])
-        y = (1.0 - is_label_available) * y_predicted + is_label_available * y
-        y = tf.stop_gradient(y)
-        logging.info("[Discriminator] %s -> aux_logits=%s, y_predicted=%s",
-                     aux_logits.shape, aux_logits.shape, y_predicted.shape)
-
-    class_embedding = self.get_class_embedding(
-        y=y, embedding_dim=x_rep.shape[-1].value, use_sn=use_sn)
-    d_logits += tf.reduce_sum(class_embedding * x_rep, axis=1, keepdims=True)
-    
-    d_probs = tf.nn.sigmoid(d_logits)
-    return d_probs, d_logits, rotation_logits, aux_logits, is_label_available
-
-  def get_class_embedding(self, y, embedding_dim, use_sn):
-    with tf.variable_scope("discriminator_projection", reuse=tf.AUTO_REUSE):
-      # We do not use ops.linear() below since it does not have an option to
-      # override the initializer.
-      kernel = tf.get_variable(
-          "kernel", [y.shape[1], embedding_dim], tf.float32,
-          initializer=tf.initializers.glorot_normal())
-      if use_sn:
-        kernel = ops.spectral_norm(kernel)
-      embedded_y = tf.matmul(y, kernel)
-      logging.info("[Discriminator] embedded_y for projection: %s",
-                   embedded_y.shape)
-      return embedded_y
 
   def merge_with_rotation_data(self, real, fake, real_labels, fake_labels,
                                num_rot_examples):
@@ -405,11 +365,6 @@ class S3GAN(modular_gan.ModularGAN):
       fake_images = self.generator(
           features["z"], y=fake_labels, is_training=is_training)
 
-    #print(real_images)
-    #print(fake_images)
-    #print(features["sampled_labels"])
-    #exit()
-
     bs = real_images.shape[0].value
     if self._self_supervision:
       assert bs % self._rotated_batch_fraction == 0, (
@@ -433,7 +388,7 @@ class S3GAN(modular_gan.ModularGAN):
       if self.conditional:
         all_labels = tf.concat([real_labels, fake_labels], axis=0)
 
-    d_predictions, d_logits, rot_logits, aux_logits, is_label_available = (
+    d_predictions, d_logits, rot_logits, aux_logits = (
         self.discriminator_with_additonal_heads(
             x=all_features, y=all_labels, is_training=is_training))
 
@@ -497,22 +452,6 @@ class S3GAN(modular_gan.ModularGAN):
     self.g_loss += self.beta_cycle_label * tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(logits=z_enc_logits_new, 
                 labels=fake_labels))
-    
-    #print(self.conditional)
-    #exit()
-    #print(self._self_supervision)
-    #print(self._rotated_batch_fraction)
-    #print(self._weight_rotation_loss_d)
-    #print(self._weight_rotation_loss_g)
-
-    #print(self._project_y)
-    #print(self._use_predictor)
-    #print(self._use_soft_pred)
-    #print(self._weight_class_loss)
-
-    #print(self._use_soft_labels)
-    #exit()
-
 
     # At this point we have the classic GAN loss with possible regularization.
     # We now add the rotation loss and summaries if required.
